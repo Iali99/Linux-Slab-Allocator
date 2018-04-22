@@ -29,22 +29,19 @@ int main()
     for(int i=31,j=1;i>=0;i--,j<<=1)
         mask[i]=j;
     //done initializing
-    int *ptr[50000];
+    int *ptr[5500];
     printf("starting off\n");
-    for(int i =0 ;i<50000;i++){
-        ptr[i] = (int*)mymalloc(10);
+    for(int i =0 ;i<5500;i++){
+        ptr[i] = (int*)mymalloc(100);
         if(i%100==0)
             printf("%d\n",i);
 
     }
     printf("FREEING\n");
-    myfree(ptr[49999]);
-    printf("DONE WITH ONE\n");
-    for(int i =0 ;i<50000-1;i++){
+    for(int i =0 ;i<5500;i++){
 
-        myfree(ptr[i]);
-        if(i%100==0)
-            printf("%d\n",i);
+        printf("%d  ",i);
+        myfree((void*)ptr[i]);
     }
 
     //int *ptr = (int*)mymalloc(10);
@@ -92,7 +89,8 @@ void* mymalloc(unsigned size){
                     bool *ptr1 = (bool*)(ptr+1);
                     ptr1 += idx;
                     *(bool**)ptr1 = (bool*)ptr;
-                    printf("SIZE : %d\n",((header*)ptr1)->size);
+                    printf("SIZE : %d\n",((header*)(*(int**)ptr1))->size);
+                    printf("SIZE2: %d\n",ptr->size);
                     return (void*)(ptr1+8);
                }
        }
@@ -120,10 +118,11 @@ void* mymalloc(unsigned size){
         temp->next = NULL;
         //Done with initialization
         //allocate memory
-        bool *allocate = sizeof(header) + (bool*)temp;
+        bool *allocate =  (bool*)temp+ sizeof(header);
         *(bool**)allocate = (bool*)temp;
         temp->freeobj--;
         temp->bitmap[0] = temp->bitmap[0]| mask[0];
+        printf("SIZEBLALKDJFLKJAKL JLKDAJF LKJDLFJ LKJ : %d\n",((header*)(*(int**)allocate))->size);
 
         return (void*)(allocate+8);
 
@@ -135,10 +134,10 @@ void* mymalloc(unsigned size){
 void myfree(void *ptr){
     bool *pt = (bool*)ptr;
     pt-=8;
-    header *p = (header*)pt;
-    int diff = (bool*)(p+1)-pt;
-    printf("HIHI %d\n",p->size);
-    diff /=  p->size;
+    header *p = (header*)*(int**)pt;
+    int diff = pt -(bool*)(p+1);
+    diff /=  p->size+8;
+    printf("HIHI %d    %d\n",p->size,diff);
     p->bitmap[diff>>5] &= ~mask[diff%32];
     p->freeobj++;
 
