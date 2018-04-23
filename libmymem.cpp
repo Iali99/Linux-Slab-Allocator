@@ -4,7 +4,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <stdbool.h>
-#include "code.hpp"
+#include "libmymem.hpp"
 
 //typedef struct header{
 //   int totobj;//0th byte
@@ -53,7 +53,6 @@
 //
 //    return 0;
 //}
-
 void* mymalloc(unsigned size){
     int i=0;
     while((size>>i) != 0)//find appropriate hash value
@@ -141,5 +140,35 @@ void myfree(void *ptr){
     printf("HIHI %d    %d\n",p->size,diff);
     p->bitmap[diff>>5] &= ~mask[diff%32];
     p->freeobj++;
+    //Cleanup peridically
+    int c = rand()%100;
+    void cleanup();
+    if(c == 1)
+        cleanup();
+
+}
+
+void cleanup()
+{
+    printf("DLKSJDFLKJAKLDFJKLADJFLK JADKLJ KLDJKL JSLKFJ SLKFJ LKDJF LK\n");
+    for(int i=0;i<12;i++){
+        header ** traverse = &hash_bucket[i];
+        while((*traverse) != NULL){
+            if ((*traverse)->freeobj == (*traverse)->totobj){
+                //unlink it
+                void *temp = (void*)*traverse;
+                if((*traverse)->next != NULL)
+                    *traverse = ((*traverse)->next->next);
+                else
+                    *traverse = NULL;
+                //unmap it
+                munmap(temp,64*1024);
+
+            }
+            traverse = &((*traverse)->next);
+
+        }
+    }
+
 
 }
