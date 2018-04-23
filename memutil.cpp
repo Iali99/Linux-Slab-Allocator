@@ -2,26 +2,48 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "libmymem.hpp"
-int main()
+#include <thread>
+#include <vector>
+
+void threadFunction(int n);
+
+int main(int argc, char *argv[])
 {
-
-    srand(19235);
-    int *ptr[1000];
-    int arr[1000];
-    for(int i=0;i<1000;arr[i++] = i);
-    for(int i = 0;i<1000;i++)
+    int t,n;
+    if (argc != 3){
+        printf("USAGE memutil #threads #iterations\n");
+        return 1;
+    }
+    t = atoi(argv[1]);
+    n = atoi(argv[2]);
+    std::vector<std::thread> threads;
+    printf("Starting Threads\n");
+    for(int i = 0;i<t;i++)
     {
-        unsigned int s = rand()%8192 + 1;
-        printf ("random request size = %d\n",s);
-        ptr[i] = (int*) mymalloc(s);
-        *(int*)ptr[i]=arr[i];
+        threads.emplace_back(threadFunction,n);
     }
-    for(int i=0;i<1000;i++){
-        printf("i :%d   value:%d\n",i,*ptr[i]);
-        myfree(ptr[i]);
+    for(auto& th: threads)
+    {
+        th.join();
     }
-    printf("DONE\n");
-
+    printf("Done with threads\n");
     return 0;
 }
 
+void threadFunction(int n)
+{
+    srand(12621);
+    for(int i =0;i<n;i++)
+    {
+       unsigned int s = rand()%8192 +1;
+       char * ptr = (char *)mymalloc(s);
+       char * temp = ptr;
+       for(int i = 0;i<s;i++)
+       {
+           *temp = 'a';
+           temp++;
+       }
+       usleep(100);
+       myfree((void*)ptr);
+    }
+}

@@ -1,0 +1,4 @@
+g++ -std=c++11 -c libmymem.cpp
+g++ -std=c++11 -Wall -fpic -c libmymem.o -I . libmymem.cpp
+g++ -std=c++11 -shared -o libmymem.so libmymem.o
+g++ -std=c++11 -I . -L . -Wall -o memutil memutil.cpp -l mymem

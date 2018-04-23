@@ -6,100 +6,50 @@
 #include <stdbool.h>
 #include "libmymem.hpp"
 
-//typedef struct header{
-//   int totobj;//0th byte
-//   int freeobj;//4th byte
-//   int size;//8 bytes
-//   int bitmap[256]; //12
-//   struct header* next; //1036
-//   //ends at 1048
-//} header;
-//
-//header *hash_bucket[12]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
-//void* mymalloc(unsigned size);
-//void myfree(void *ptr);
-//
-//int mask[32] = {0x80000000,0x40000000,0x20000000,0x10000000,0x08000000,0x04000000,0x02000000,0x01000000,0x00800000,0x00400000,0x00200000,0x00100000,0x00080000,0x00040000,0x00020000,0x00010000,0x00008000,0x00004000,0x00002000,0x00001000,0x00000800,0x00000400,0x00000200,0x00000100,0x00000080,0x00000040,0x00000020,0x00000010,0x00000008,0x00000004,0x00000002,0x00000001};
-
-//int main()
-//{
-//    printf("Initializing\n");
-//    //initialize
-//    for(int i=0;i<12;i++)
-//        hash_bucket[i] = NULL;
-//    for(int i=31,j=1;i>=0;i--,j<<=1)
-//        mask[i]=j;
-//    //done initializing
-//    int *ptr[5500];
-//    printf("starting off\n");
-//    for(int i =0 ;i<5500;i++){
-//        ptr[i] = (int*)mymalloc(100);
-//        if(i%100==0)
-//            printf("%d\n",i);
-//
-//    }
-//    printf("FREEING\n");
-//    for(int i =0 ;i<5500;i++){
-//
-//        printf("%d  ",i);
-//        myfree((void*)ptr[i]);
-//    }
-//
-//    //int *ptr = (int*)mymalloc(10);
-//    //ptr = (int*)mymalloc(10);
-//    //printf("%ld",ptr-ptr1);
-//    printf("Done\n");
-//
-//
-//    return 0;
-//}
-void* mymalloc(unsigned size){
+void* mymalloc(unsigned size)
+{
     int i=0;
+
     while((size>>i) != 0)//find appropriate hash value
         i++;
     if(size==1)
         i=2;
     i -= 2;
-    //printf("i :%d\n",i);
 
-    header **traverse = &hash_bucket[i];
-    while(*traverse !=NULL){
-        printf("FREE OBJ:%d\n",(*traverse )-> freeobj);
-       if((*traverse)->freeobj <= 0){
-           //printf("HI\n");
-           //printf("Traverse:%p",traverse);
-       }
+    int position = i;                       //the bin value
+    bucket_locks[position].lock();          //make it thread safe
+    header **traverse = &hash_bucket[i];    //to traverse through the list
 
-       else{
-           //printf("SECOND\n");
+    while(*traverse !=NULL)
+    {
+       if((*traverse)->freeobj > 0){        //if there are free objects
+
            header *ptr = *traverse;
-           for(int i = 0,j; i< ptr->totobj/32+1;i++)
-               if(ptr->bitmap[i] != 0xffffffff){ //printf("BLAH");
-                    for(j=0;j<31;j++)
+           for(int i = 0,j; i< ptr->totobj/32+1;i++) //find the free object upto 32 bits
+               if(ptr->bitmap[i] != 0xffffffff){
+
+                    for(j=0;j<31;j++)  //find the offset within those 32 bits
                         if( (ptr->bitmap[i]&mask[j]) == 0)
-                        { //printf("1BITMAP%x\n",ptr->bitmap[i]);
-                            break;}
+                            break;
+
+                    //make changes to metadata
                     ptr->bitmap[i] = ptr->bitmap[i] | mask[j];
-                    //printf("2BITMAP%x\n",ptr->bitmap[i]);
                     ptr->freeobj--;
                     int idx = 32*i+j;
                     idx *= ptr->size + 8;
-                    //printf("SIZE:%d",ptr->size);
-                    ///printf("idx :%d\n",idx);
                     bool *ptr1 = (bool*)(ptr+1);
                     ptr1 += idx;
                     *(bool**)ptr1 = (bool*)ptr;
-                    printf("SIZE : %d\n",((header*)(*(int**)ptr1))->size);
-                    printf("SIZE2: %d\n",ptr->size);
-                    return (void*)(ptr1+8);
+                    bucket_locks[position].unlock(); //Done, unlock the list
+
+                    return (void*)(ptr1+8); //return allocated object
                }
        }
-           traverse = &( (*traverse)->next);
-       //printf("INF");
+       traverse = &( (*traverse)->next); //if node not free move to next node
     }
-    if(*traverse == NULL){
+
+    if(*traverse == NULL){ //if no free buckets available
         void *ptr;//create new page
-        printf("FIRST\n");
         if((ptr = mmap(NULL, 64*1024, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0)) == MAP_FAILED){
             perror("mmap");
             exit(1);
@@ -109,6 +59,7 @@ void* mymalloc(unsigned size){
         temp = (header*)ptr;
         //get a new page and initialize header
         int size = (2<<(i+1))+8;
+        //meta data changes
         temp->totobj = (64*1024 - sizeof(header))/size;
         temp->freeobj= temp->totobj;
         temp->size   = 2<<(i+1);
@@ -122,53 +73,57 @@ void* mymalloc(unsigned size){
         *(bool**)allocate = (bool*)temp;
         temp->freeobj--;
         temp->bitmap[0] = temp->bitmap[0]| mask[0];
-        printf("SIZEBLALKDJFLKJAKL JLKDAJF LKJDLFJ LKJ : %d\n",((header*)(*(int**)allocate))->size);
-
-        return (void*)(allocate+8);
-
+        bucket_locks[position].unlock();
+        return (void*)(allocate+8);  //Return memory to calling function
     }
     return NULL;
-
 }
 
 void myfree(void *ptr){
+
     bool *pt = (bool*)ptr;
-    pt-=8;
+    pt-=8; //find header position of node
     header *p = (header*)*(int**)pt;
+    int position,i=-2,temp;
+    temp = p->size;
+    while((temp>>=1)!=0)i++;
+    position = i; //find offset of memory to be freed
+    bucket_locks[position].lock();   //lock  associated list
     int diff = pt -(bool*)(p+1);
     diff /=  p->size+8;
-    printf("HIHI %d    %d\n",p->size,diff);
-    p->bitmap[diff>>5] &= ~mask[diff%32];
+    p->bitmap[diff>>5] &= ~mask[diff%32]; //make metadata changes
     p->freeobj++;
-    //Cleanup peridically
+    //Cleanup peridically, not everytime
     int c = rand()%100;
-    void cleanup();
+    void cleanup(int n);
     if(c == 1)
-        cleanup();
-
+    {
+        cleanup_lock.lock();
+        cleanup(position);
+        cleanup_lock.unlock();
+    }
+    bucket_locks[position].unlock();
 }
 
-void cleanup()
+void cleanup(int n)
 {
-    printf("DLKSJDFLKJAKLDFJKLADJFLK JADKLJ KLDJKL JSLKFJ SLKFJ LKDJF LK\n");
-    for(int i=0;i<12;i++){
-        header ** traverse = &hash_bucket[i];
-        while((*traverse) != NULL){
-            if ((*traverse)->freeobj == (*traverse)->totobj){
-                //unlink it
-                void *temp = (void*)*traverse;
-                if((*traverse)->next != NULL)
-                    *traverse = ((*traverse)->next->next);
-                else
-                    *traverse = NULL;
-                //unmap it
-                munmap(temp,64*1024);
-
-            }
-            traverse = &((*traverse)->next);
+    //garbage collection
+    header ** traverse = &hash_bucket[n]; //go through n'th list
+    while((*traverse) != NULL){
+        if ((*traverse)->freeobj == (*traverse)->totobj){ //if empty node found
+            //unlink it
+            void *temp = (void*)*traverse;
+            if((*traverse)->next != NULL)
+                *traverse = ((*traverse)->next->next);
+            else
+                *traverse = NULL;
+            //unmap it
+            munmap(temp,64*1024);
 
         }
+        else
+            traverse = &((*traverse)->next);
+        if(*traverse == NULL)
+            break;
     }
-
-
 }
